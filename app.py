@@ -1,29 +1,24 @@
+# app.py
 import streamlit as st
-from auth import login, register, get_profile
-import agency
-import client
+from auth import register, login, get_profile
 
-st.set_page_config(page_title="Client Portal", layout="wide")
+st.title("Client Portal")
 
-option = st.sidebar.selectbox("Choose action", ["Login", "Register"])
-
-if option == "Login":
-    login()
-    st.stop()
-elif option == "Register":
-    register()
-    st.stop()
-
-# After login
-profile = get_profile()
-
-if not profile:
-    st.error("Profile not found")
-    st.stop()
-
-if profile["role"] == "agency":
-    agency.render()
-elif profile["role"] == "client":
-    client.render()
+# Show register or login form
+if "user" not in st.session_state:
+    option = st.radio("Choose action", ["Register", "Login"])
+    if option == "Register":
+        register()
+    else:
+        login()
 else:
-    st.error("Invalid role")
+    # User is logged in
+    profile = get_profile()
+    if profile:
+        st.write(f"Welcome {profile['role']}!")
+        if profile['role'] == "agency":
+            st.write("Agency dashboard goes here")
+        else:
+            st.write("Client dashboard goes here")
+    else:
+        st.error("Profile not found")
