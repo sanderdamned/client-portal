@@ -50,6 +50,14 @@ def get_profile():
     supabase = get_supabase()
     user = st.session_state.get("user")
     if not user:
+
+        try:
+    supabase_service.table("profiles").insert(profile_data).execute()
+except Exception as e:
+    st.error(f"Insert failed: {e}")
+    import traceback
+    st.text(traceback.format_exc())
+
         return None
     profile = supabase.table("profiles").select("*").eq("id", user.id).single().execute()
     return profile.data
