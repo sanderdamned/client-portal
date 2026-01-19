@@ -4,10 +4,10 @@ from auth import register, login, get_profile
 
 st.title("Client Portal")
 
-# Show register or login form
+# Show register or login form if not logged in
 if "user" not in st.session_state:
-    option = st.radio("Choose action", ["Register", "Login"])
-    if option == "Register":
+    action = st.radio("Choose action", ["Register", "Login"])
+    if action == "Register":
         register()
     else:
         login()
