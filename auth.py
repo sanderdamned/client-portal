@@ -10,25 +10,31 @@ def register():
     agency_id = st.text_input("Agency ID (if client)", "")
 
     if st.button("Register"):
-        supabase_auth = get_supabase()            # For sign_up
+        supabase_auth = get_supabase()             # For sign_up and sign_in
         supabase_service = get_supabase_service()  # For inserting profile
 
         try:
-            # 1️⃣ Sign up user
-            res = supabase_auth.auth.sign_up({"email": email, "password": password})
-            user = res.user
+            # 1️⃣ Create Auth user
+            res_signup = supabase_auth.auth.sign_up({"email": email, "password": password})
+            user = res_signup.user
 
             if user:
-                # 2️⃣ Insert profile using service_role (bypass RLS)
+                # 2️⃣ Sign in immediately to ensure user exists in auth.users
+                res_login = supabase_auth.auth.sign_in_with_password({"email": email, "password": password})
+                user = res_login.user
+
+                # 3️⃣ Insert profile using service_role (bypasses RLS)
                 profile_data = {
                     "id": user.id,
                     "role": role,
                     "agency_id": agency_id if agency_id else None
                 }
                 supabase_service.table("profiles").insert(profile_data).execute()
+
                 st.success("User registered! You can now log in.")
             else:
-                st.error("Registration failed")
+                st.error("Registration failed. Could not create user.")
+
         except Exception as e:
             st.error(f"Registration error: {e}")
             import traceback
@@ -49,7 +55,7 @@ def login():
                 st.success("Logged in!")
                 st.experimental_rerun()
             else:
-                st.error("Login failed")
+                st.error("Login failed. Check your email and password.")
         except Exception as e:
             st.error(f"Login error: {e}")
             import traceback
