@@ -113,9 +113,9 @@ else:
                     "due_date": due_date.isoformat() if due_date else None  # <-- convert date to string
                }).execute()
 
-        st.success("Planning added!")
-    except Exception as e:
-        st.error(f"Error adding planning: {e}")
+                st.success("Planning added!")
+            except Exception as e:
+                st.error(f"Error adding planning: {e}")
 
 
     # Display planning for both roles
