@@ -1,8 +1,9 @@
 # app.py
 import streamlit as st
 from auth import register, login, get_profile, complete_profile
-from supabase_client import get_supabase
+from supabase_client import get_supabase, get_supabase_service
 
+st.set_page_config(page_title="Client Portal")
 st.title("Client Portal")
 
 # ------------------------------------
@@ -21,57 +22,66 @@ if "user" not in st.session_state:
 # ------------------------------------
 else:
     supabase = get_supabase()
+    supabase_service = get_supabase_service()
     user = st.session_state["user"]
-    profile = get_profile()
+
+    # Load or reload profile
+    if "profile" not in st.session_state or st.session_state.get("profile_updated", False):
+        st.session_state["profile"] = get_profile()
+        st.session_state["profile_updated"] = False
+
+    profile = st.session_state["profile"]
 
     if not profile:
         st.error("Profile not found.")
         st.stop()
 
-  # --------------------------------
-# PROFILE COMPLETION (ROLE)
-# --------------------------------
-if profile["role"] is None:
-    st.subheader("Complete your profile")
+    # --------------------------------
+    # PROFILE COMPLETION
+    # --------------------------------
+    if profile["role"] is None:
+        st.subheader("Complete your profile")
 
-    role = st.selectbox("I am a", ["agency", "client"])
-    agency_id = None
+        role = st.selectbox("I am a", ["agency", "client"])
+        agency_id = None
+        if role == "client":
+            agency_id = st.text_input("Agency ID")
 
-    if role == "client":
-        agency_id = st.text_input("Agency ID")
+        if st.button("Save profile"):
+            complete_profile(role, agency_id)
+            st.session_state["profile_updated"] = True
+            st.experimental_rerun()
 
-    if st.button("Save profile"):
-        complete_profile(role, agency_id)
+    # --------------------------------
+    # AGENCY CREATION
+    # --------------------------------
+    elif profile["role"] == "agency" and profile["agency_id"] is None:
+        st.subheader("Create your agency")
 
-        # Force reload of profile after saving
-        st.session_state["profile_updated"] = True
-        st.experimental_rerun()
+        agency_name = st.text_input("Agency name")
 
-# --------------------------------
-# AGENCY CREATION
-# --------------------------------
-elif profile["role"] == "agency" and profile["agency_id"] is None:
-    st.subheader("Create your agency")
+        if st.button("Create agency"):
+            try:
+                # Use service client to bypass RLS
+                res = supabase_service.table("agencies").insert({
+                    "name": agency_name,
+                    "owner_id": user.id
+                }).execute()
 
-    agency_name = st.text_input("Agency name")
+                agency_id = res.data[0]["id"]
 
-    if st.button("Create agency"):
-        supabase = get_supabase()
-        res = supabase.table("agencies").insert({
-            "name": agency_name,
-            "owner_id": user.id
-        }).execute()
+                supabase_service.table("profiles").update({
+                    "agency_id": agency_id
+                }).eq("id", user.id).execute()
 
-        agency_id = res.data[0]["id"]
+                st.success(f"Agency '{agency_name}' created!")
+                st.session_state["profile_updated"] = True
+                st.experimental_rerun()
 
-        supabase.table("profiles").update({
-            "agency_id": agency_id
-        }).eq("id", user.id).execute()
-
-        # Force reload of profile
-        st.session_state["profile_updated"] = True
-        st.experimental_rerun()
-
+            except Exception as e:
+                st.error(f"Error creating agency: {e}")
+                import traceback
+                st.text(traceback.format_exc())
 
     # --------------------------------
     # DASHBOARDS
@@ -79,10 +89,21 @@ elif profile["role"] == "agency" and profile["agency_id"] is None:
     else:
         st.success(f"Welcome {profile['role']}!")
 
-        if profile["role"] == "agency":
-            st.header("Agency dashboard")
-            st.write("Planning, messages, budget, invoices")
+        # Tabs for future functionality
+        tabs = st.tabs(["Planning", "Messages", "Budget", "Invoices"])
 
-        else:
-            st.header("Client dashboard")
-            st.write("View planning, messages, budget, invoices")
+        with tabs[0]:
+            st.header("Planning")
+            st.write("Agency can add/update planning. Client can view.")
+
+        with tabs[1]:
+            st.header("Messages")
+            st.write("Agency and client can send messages and view them.")
+
+        with tabs[2]:
+            st.header("Budget")
+            st.write("Agency can submit/update budget. Client can view timeline & deltas.")
+
+        with tabs[3]:
+            st.header("Invoices")
+            st.write("Agency can add invoices. Client can mark as refused, scheduled, or paid.")
