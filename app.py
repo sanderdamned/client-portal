@@ -28,43 +28,50 @@ else:
         st.error("Profile not found.")
         st.stop()
 
-    # --------------------------------
-    # PROFILE COMPLETION (ROLE)
-    # --------------------------------
-    if profile["role"] is None:
-        st.subheader("Complete your profile")
+  # --------------------------------
+# PROFILE COMPLETION (ROLE)
+# --------------------------------
+if profile["role"] is None:
+    st.subheader("Complete your profile")
 
-        role = st.selectbox("I am a", ["agency", "client"])
-        agency_id = None
+    role = st.selectbox("I am a", ["agency", "client"])
+    agency_id = None
 
-        if role == "client":
-            agency_id = st.text_input("Agency ID")
+    if role == "client":
+        agency_id = st.text_input("Agency ID")
 
-        if st.button("Save profile"):
-            complete_profile(role, agency_id)
-            st.experimental_rerun()
+    if st.button("Save profile"):
+        complete_profile(role, agency_id)
 
-    # --------------------------------
-    # AGENCY CREATION (STEP 0.4)
-    # --------------------------------
-    elif profile["role"] == "agency" and profile["agency_id"] is None:
-        st.subheader("Create your agency")
+        # Force reload of profile after saving
+        st.session_state["profile_updated"] = True
+        st.experimental_rerun()
 
-        agency_name = st.text_input("Agency name")
+# --------------------------------
+# AGENCY CREATION
+# --------------------------------
+elif profile["role"] == "agency" and profile["agency_id"] is None:
+    st.subheader("Create your agency")
 
-        if st.button("Create agency"):
-            res = supabase.table("agencies").insert({
-                "name": agency_name,
-                "owner_id": user.id
-            }).execute()
+    agency_name = st.text_input("Agency name")
 
-            agency_id = res.data[0]["id"]
+    if st.button("Create agency"):
+        supabase = get_supabase()
+        res = supabase.table("agencies").insert({
+            "name": agency_name,
+            "owner_id": user.id
+        }).execute()
 
-            supabase.table("profiles").update({
-                "agency_id": agency_id
-            }).eq("id", user.id).execute()
+        agency_id = res.data[0]["id"]
 
-            st.experimental_rerun()
+        supabase.table("profiles").update({
+            "agency_id": agency_id
+        }).eq("id", user.id).execute()
+
+        # Force reload of profile
+        st.session_state["profile_updated"] = True
+        st.experimental_rerun()
+
 
     # --------------------------------
     # DASHBOARDS
