@@ -92,7 +92,7 @@ else:
         # Tabs for future functionality
         tabs = st.tabs(["Planning", "Messages", "Budget", "Invoices"])
 
-        with tabs[0]:
+       with tabs[0]:
     st.header("Planning")
     st.write("Agency can add/update planning. Client can view.")
 
@@ -133,8 +133,6 @@ else:
 
     except Exception as e:
         st.error(f"Error loading planning: {e}")
-
-
 
         with tabs[1]:
             st.header("Messages")
