@@ -105,13 +105,13 @@ else:
 
         if st.button("Submit Planning"):
             try:
-        res = supabase_service.table("planning").insert({
-            "agency_id": profile["agency_id"],
-            "client_id": None,  # We'll link client later
-            "title": title,
-            "description": description,
-            "due_date": due_date.isoformat() if due_date else None  # <-- convert date to string
-        }).execute()
+                res = supabase_service.table("planning").insert({
+                    "agency_id": profile["agency_id"],
+                    "client_id": None,  # We'll link client later
+                    "title": title,
+                    "description": description,
+                    "due_date": due_date.isoformat() if due_date else None  # <-- convert date to string
+               }).execute()
 
         st.success("Planning added!")
     except Exception as e:
