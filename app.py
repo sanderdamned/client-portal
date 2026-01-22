@@ -66,7 +66,7 @@ else:
                 res = supabase_service.table("agencies").insert({
                     "name": agency_name,
                     "owner_id": user.id
-                }).execute()
+                }, returning="representation").execute()
 
                 agency_id = res.data[0]["id"]
 
@@ -114,19 +114,18 @@ else:
 
                 if st.button("Submit Planning"):
                     try:
+                        # Insert planning using service client (bypass RLS)
                         res = supabase_service.table("planning").insert({
                             "agency_id": profile["agency_id"],
                             "client_id": client_id,
                             "title": title,
                             "description": description,
                             "due_date": due_date.isoformat() if due_date else None
-                        }).execute()
+                        }, returning="representation").execute()
 
                         if res.data:
                             st.success("Planning added!")
-                            # Clear inputs
-                            title = ""
-                            description = ""
+                            st.experimental_rerun()
                         else:
                             st.error("Planning insertion failed.")
 
@@ -140,7 +139,7 @@ else:
                     planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
                 else:
                     # Client sees planning assigned to them or general agency planning
-                    planning = supabase.table("planning").select("*").or_(
+                    planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).or_(
                         f"client_id.eq.{profile['id']},client_id.is.null"
                     ).execute()
 
