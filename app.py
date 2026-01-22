@@ -95,6 +95,46 @@ else:
         with tabs[0]:
             st.header("Planning")
             st.write("Agency can add/update planning. Client can view.")
+            with tabs[0]:
+    st.header("Planning")
+
+    if profile["role"] == "agency":
+        st.subheader("Create / Update Planning")
+        title = st.text_input("Title")
+        description = st.text_area("Description")
+        due_date = st.date_input("Due Date")
+
+        if st.button("Submit Planning"):
+            try:
+                res = supabase_service.table("planning").insert({
+                    "agency_id": profile["agency_id"],
+                    "client_id": None,  # We'll link client later
+                    "title": title,
+                    "description": description,
+                    "due_date": due_date
+                }).execute()
+
+                st.success("Planning added!")
+            except Exception as e:
+                st.error(f"Error adding planning: {e}")
+
+    # Display planning for both roles
+    st.subheader("All Planning")
+    try:
+        if profile["role"] == "agency":
+            planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
+        else:
+            planning = supabase.table("planning").select("*").eq("client_id", profile["id"]).execute()
+
+        for p in planning.data:
+            st.write(f"**{p['title']}**")
+            st.write(f"{p['description']}")
+            st.write(f"Due: {p['due_date']}")
+            st.write("---")
+
+    except Exception as e:
+        st.error(f"Error loading planning: {e}")
+
 
         with tabs[1]:
             st.header("Messages")
