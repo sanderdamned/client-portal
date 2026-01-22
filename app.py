@@ -104,7 +104,7 @@ else:
         due_date = st.date_input("Due Date")
 
         if st.button("Submit Planning"):
-    try:
+            try:
         res = supabase_service.table("planning").insert({
             "agency_id": profile["agency_id"],
             "client_id": None,  # We'll link client later
