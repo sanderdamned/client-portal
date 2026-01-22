@@ -92,7 +92,7 @@ else:
         # Tabs for future functionality
         tabs = st.tabs(["Planning", "Messages", "Budget", "Invoices"])
 
-       with tabs[0]:
+    with tabs[0]:
     st.header("Planning")
     st.write("Agency can add/update planning. Client can view.")
 
