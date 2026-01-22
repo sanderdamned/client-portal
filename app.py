@@ -50,7 +50,6 @@ else:
         if st.button("Save profile"):
             complete_profile(role, agency_id)
             st.session_state["profile_updated"] = True
-            st.experimental_rerun()
 
     # --------------------------------
     # AGENCY CREATION
@@ -76,7 +75,6 @@ else:
 
                 st.success(f"Agency '{agency_name}' created!")
                 st.session_state["profile_updated"] = True
-                st.experimental_rerun()
 
             except Exception as e:
                 st.error(f"Error creating agency: {e}")
@@ -99,14 +97,16 @@ else:
             st.header("Planning")
             st.write("Agency can add/update planning. Client can view.")
 
-            # Agency: create / update planning
+            # --------------------
+            # Agency: Create / Update Planning
+            # --------------------
             if profile["role"] == "agency":
                 st.subheader("Create / Update Planning")
                 title = st.text_input("Title")
                 description = st.text_area("Description")
                 due_date = st.date_input("Due Date")
 
-                # Optional: select a client for this planning
+                # Optional: assign to client
                 clients = supabase.table("profiles").select("*").eq("agency_id", profile["agency_id"]).eq("role", "client").execute()
                 client_options = {c["email"]: c["id"] for c in clients.data} if clients.data else {}
                 client_choice = st.selectbox("Assign to client (optional)", ["None"] + list(client_options.keys()))
@@ -114,7 +114,6 @@ else:
 
                 if st.button("Submit Planning"):
                     try:
-                        # Insert planning using service client (bypass RLS)
                         res = supabase_service.table("planning").insert({
                             "agency_id": profile["agency_id"],
                             "client_id": client_id,
@@ -125,20 +124,20 @@ else:
 
                         if res.data:
                             st.success("Planning added!")
-                            st.experimental_rerun()
                         else:
                             st.error("Planning insertion failed.")
 
                     except Exception as e:
                         st.error(f"Error adding planning: {e}")
 
+            # --------------------
             # Display planning for both roles
+            # --------------------
             st.subheader("All Planning")
             try:
                 if profile["role"] == "agency":
                     planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
                 else:
-                    # Client sees planning assigned to them or general agency planning
                     planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).or_(
                         f"client_id.eq.{profile['id']},client_id.is.null"
                     ).execute()
