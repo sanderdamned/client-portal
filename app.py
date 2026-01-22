@@ -89,60 +89,82 @@ else:
     else:
         st.success(f"Welcome {profile['role']}!")
 
-        # Tabs for future functionality
+        # Tabs for different functionality
         tabs = st.tabs(["Planning", "Messages", "Budget", "Invoices"])
 
-    with tabs[0]:
-        st.header("Planning")
-        st.write("Agency can add/update planning. Client can view.")
+        # ----------------------------
+        # TAB 1: Planning
+        # ----------------------------
+        with tabs[0]:
+            st.header("Planning")
+            st.write("Agency can add/update planning. Client can view.")
 
-    # Agency: create / update planning
-    if profile["role"] == "agency":
-        st.subheader("Create / Update Planning")
-        title = st.text_input("Title")
-        description = st.text_area("Description")
-        due_date = st.date_input("Due Date")
+            # Agency: create / update planning
+            if profile["role"] == "agency":
+                st.subheader("Create / Update Planning")
+                title = st.text_input("Title")
+                description = st.text_area("Description")
+                due_date = st.date_input("Due Date")
 
-        if st.button("Submit Planning"):
+                if st.button("Submit Planning"):
+                    try:
+                        # Insert planning using service client (bypass RLS)
+                        res = supabase_service.table("planning").insert({
+                            "agency_id": profile["agency_id"],
+                            "client_id": None,  # assign later if needed
+                            "title": title,
+                            "description": description,
+                            "due_date": due_date.isoformat() if due_date else None
+                        }).execute()
+
+                        st.success("Planning added!")
+                        st.experimental_rerun()  # refresh to see it immediately
+
+                    except Exception as e:
+                        st.error(f"Error adding planning: {e}")
+
+            # Display planning for both roles
+            st.subheader("All Planning")
             try:
-                res = supabase_service.table("planning").insert({
-                    "agency_id": profile["agency_id"],
-                    "client_id": None,  # We'll link client later
-                    "title": title,
-                    "description": description,
-                    "due_date": due_date.isoformat() if due_date else None  # <-- convert date to string
-               }).execute()
+                if profile["role"] == "agency":
+                    # Agency sees their own planning
+                    planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
+                else:
+                    # Client sees planning where they are the client
+                    planning = supabase.table("planning").select("*").eq("client_id", profile["id"]).execute()
 
-                st.success("Planning added!")
+                if planning.data:
+                    for p in planning.data:
+                        st.write(f"**{p['title']}**")
+                        st.write(f"{p['description']}")
+                        st.write(f"Due: {p['due_date']}")
+                        st.write("---")
+                else:
+                    st.info("No planning found yet.")
+
             except Exception as e:
-                st.error(f"Error adding planning: {e}")
+                st.error(f"Error loading planning: {e}")
 
-
-    # Display planning for both roles
-    st.subheader("All Planning")
-    try:
-        if profile["role"] == "agency":
-            planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
-        else:
-            planning = supabase.table("planning").select("*").eq("client_id", profile["id"]).execute()
-
-        for p in planning.data:
-            st.write(f"**{p['title']}**")
-            st.write(f"{p['description']}")
-            st.write(f"Due: {p['due_date']}")
-            st.write("---")
-
-    except Exception as e:
-        st.error(f"Error loading planning: {e}")
-
+        # ----------------------------
+        # TAB 2: Messages
+        # ----------------------------
         with tabs[1]:
             st.header("Messages")
             st.write("Agency and client can send messages and view them.")
+            # TODO: implement messaging later
 
+        # ----------------------------
+        # TAB 3: Budget
+        # ----------------------------
         with tabs[2]:
             st.header("Budget")
             st.write("Agency can submit/update budget. Client can view timeline & deltas.")
+            # TODO: implement budget later
 
+        # ----------------------------
+        # TAB 4: Invoices
+        # ----------------------------
         with tabs[3]:
             st.header("Invoices")
             st.write("Agency can add invoices. Client can mark as refused, scheduled, or paid.")
+            # TODO: implement invoices later
