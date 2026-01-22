@@ -93,11 +93,10 @@ else:
         tabs = st.tabs(["Planning", "Messages", "Budget", "Invoices"])
 
         with tabs[0]:
-            st.header("Planning")
-            st.write("Agency can add/update planning. Client can view.")
-            with tabs[0]:
     st.header("Planning")
+    st.write("Agency can add/update planning. Client can view.")
 
+    # Agency: create / update planning
     if profile["role"] == "agency":
         st.subheader("Create / Update Planning")
         title = st.text_input("Title")
@@ -134,6 +133,7 @@ else:
 
     except Exception as e:
         st.error(f"Error loading planning: {e}")
+
 
 
         with tabs[1]:
