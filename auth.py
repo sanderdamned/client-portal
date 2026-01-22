@@ -4,10 +4,26 @@ from supabase_client import get_supabase, get_supabase_service
 
 def register():
     st.subheader("Register")
+
     email = st.text_input("Email", key="reg_email")
     password = st.text_input("Password", type="password", key="reg_pw")
-    role = st.selectbox("Role", ["agency", "client"])
-    agency_id = st.text_input("Agency ID (if client)", "")
+
+    if st.button("Register"):
+        supabase = get_supabase()
+
+        try:
+            res = supabase.auth.sign_up({
+                "email": email,
+                "password": password
+            })
+
+            if res.user:
+                st.success("Registration successful. You can now log in.")
+            else:
+                st.error("Registration failed.")
+
+        except Exception as e:
+            st.error(f"Registration error: {e}")
 
     if st.button("Register"):
         supabase_auth = get_supabase()             # For sign_up and sign_in
