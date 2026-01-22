@@ -99,56 +99,62 @@ else:
             st.header("Planning")
             st.write("Agency can add/update planning. Client can view.")
 
-    # Agency: create / update planning
-    if profile["role"] == "agency":
-        st.subheader("Create / Update Planning")
-        title = st.text_input("Title")
-        description = st.text_area("Description")
-        due_date = st.date_input("Due Date")
+            # Agency: create / update planning
+            if profile["role"] == "agency":
+                st.subheader("Create / Update Planning")
+                title = st.text_input("Title")
+                description = st.text_area("Description")
+                due_date = st.date_input("Due Date")
 
-        if st.button("Submit Planning"):
+                # Optional: select a client for this planning
+                clients = supabase.table("profiles").select("*").eq("agency_id", profile["agency_id"]).eq("role", "client").execute()
+                client_options = {c["email"]: c["id"] for c in clients.data} if clients.data else {}
+                client_choice = st.selectbox("Assign to client (optional)", ["None"] + list(client_options.keys()))
+                client_id = client_options.get(client_choice) if client_choice != "None" else None
+
+                if st.button("Submit Planning"):
+                    try:
+                        res = supabase_service.table("planning").insert({
+                            "agency_id": profile["agency_id"],
+                            "client_id": client_id,
+                            "title": title,
+                            "description": description,
+                            "due_date": due_date.isoformat() if due_date else None
+                        }).execute()
+
+                        if res.data:
+                            st.success("Planning added!")
+                            # Clear inputs
+                            title = ""
+                            description = ""
+                        else:
+                            st.error("Planning insertion failed.")
+
+                    except Exception as e:
+                        st.error(f"Error adding planning: {e}")
+
+            # Display planning for both roles
+            st.subheader("All Planning")
             try:
-                # Insert planning using service client (bypass RLS)
-                res = supabase_service.table("planning").insert({
-                    "agency_id": profile["agency_id"],
-                    "client_id": None,
-                    "title": title,
-                    "description": description,
-                    "due_date": due_date.isoformat() if due_date else None
-                }).execute()
-
-                if res.data:
-                    st.success("Planning added!")
-                    # Clear inputs after submission
-                    st.experimental_set_query_params()  # forces rerender
+                if profile["role"] == "agency":
+                    planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
                 else:
-                    st.error("Planning insertion failed.")
+                    # Client sees planning assigned to them or general agency planning
+                    planning = supabase.table("planning").select("*").or_(
+                        f"client_id.eq.{profile['id']},client_id.is.null"
+                    ).execute()
+
+                if planning.data:
+                    for p in planning.data:
+                        st.write(f"**{p['title']}**")
+                        st.write(f"{p['description']}")
+                        st.write(f"Due: {p['due_date']}")
+                        st.write("---")
+                else:
+                    st.info("No planning found yet.")
 
             except Exception as e:
-                st.error(f"Error adding planning: {e}")
-
-    # Display planning for both roles
-    st.subheader("All Planning")
-    try:
-        if profile["role"] == "agency":
-            # Agency sees their own planning
-            planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
-        else:
-            # Client sees planning where they are the client
-            planning = supabase.table("planning").select("*").eq("client_id", profile["id"]).execute()
-
-        if planning.data:
-            for p in planning.data:
-                st.write(f"**{p['title']}**")
-                st.write(f"{p['description']}")
-                st.write(f"Due: {p['due_date']}")
-                st.write("---")
-        else:
-            st.info("No planning found yet.")
-
-    except Exception as e:
-        st.error(f"Error loading planning: {e}")
-
+                st.error(f"Error loading planning: {e}")
 
         # ----------------------------
         # TAB 2: Messages
