@@ -99,51 +99,56 @@ else:
             st.header("Planning")
             st.write("Agency can add/update planning. Client can view.")
 
-            # Agency: create / update planning
-            if profile["role"] == "agency":
-                st.subheader("Create / Update Planning")
-                title = st.text_input("Title")
-                description = st.text_area("Description")
-                due_date = st.date_input("Due Date")
+    # Agency: create / update planning
+    if profile["role"] == "agency":
+        st.subheader("Create / Update Planning")
+        title = st.text_input("Title")
+        description = st.text_area("Description")
+        due_date = st.date_input("Due Date")
 
-                if st.button("Submit Planning"):
-                    try:
-                        # Insert planning using service client (bypass RLS)
-                        res = supabase_service.table("planning").insert({
-                            "agency_id": profile["agency_id"],
-                            "client_id": None,  # assign later if needed
-                            "title": title,
-                            "description": description,
-                            "due_date": due_date.isoformat() if due_date else None
-                        }).execute()
-
-                        st.success("Planning added!")
-                        st.experimental_rerun()  # refresh to see it immediately
-
-                    except Exception as e:
-                        st.error(f"Error adding planning: {e}")
-
-            # Display planning for both roles
-            st.subheader("All Planning")
+        if st.button("Submit Planning"):
             try:
-                if profile["role"] == "agency":
-                    # Agency sees their own planning
-                    planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
-                else:
-                    # Client sees planning where they are the client
-                    planning = supabase.table("planning").select("*").eq("client_id", profile["id"]).execute()
+                # Insert planning using service client (bypass RLS)
+                res = supabase_service.table("planning").insert({
+                    "agency_id": profile["agency_id"],
+                    "client_id": None,
+                    "title": title,
+                    "description": description,
+                    "due_date": due_date.isoformat() if due_date else None
+                }).execute()
 
-                if planning.data:
-                    for p in planning.data:
-                        st.write(f"**{p['title']}**")
-                        st.write(f"{p['description']}")
-                        st.write(f"Due: {p['due_date']}")
-                        st.write("---")
+                if res.data:
+                    st.success("Planning added!")
+                    # Clear inputs after submission
+                    st.experimental_set_query_params()  # forces rerender
                 else:
-                    st.info("No planning found yet.")
+                    st.error("Planning insertion failed.")
 
             except Exception as e:
-                st.error(f"Error loading planning: {e}")
+                st.error(f"Error adding planning: {e}")
+
+    # Display planning for both roles
+    st.subheader("All Planning")
+    try:
+        if profile["role"] == "agency":
+            # Agency sees their own planning
+            planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
+        else:
+            # Client sees planning where they are the client
+            planning = supabase.table("planning").select("*").eq("client_id", profile["id"]).execute()
+
+        if planning.data:
+            for p in planning.data:
+                st.write(f"**{p['title']}**")
+                st.write(f"{p['description']}")
+                st.write(f"Due: {p['due_date']}")
+                st.write("---")
+        else:
+            st.info("No planning found yet.")
+
+    except Exception as e:
+        st.error(f"Error loading planning: {e}")
+
 
         # ----------------------------
         # TAB 2: Messages
