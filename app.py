@@ -135,7 +135,7 @@ if profile["role"] == "agency":
                 st.warning("Name, email, and password are required")
             else:
                 try:
-                    # Use hashlib for password hashing (works without extra packages)
+                    # Hash password
                     password_hash = hashlib.sha256(client_password.encode()).hexdigest()
 
                     # Insert into clients_manager
@@ -146,7 +146,7 @@ if profile["role"] == "agency":
                         "phone": client_phone,
                         "address": client_address,
                         "password_hash": password_hash
-                    }).execute()
+                    }, returning="representation").execute()
 
                     # Insert into clients table
                     client_id = res_manager.data[0]["id"]
@@ -224,6 +224,7 @@ with tabs[1]:
                     st.warning("Title and due date are required")
                 else:
                     try:
+                        # Insert into planning table (client_id references clients.id)
                         res = supabase.table("planning").insert({
                             "agency_id": profile["agency_id"],
                             "client_id": selected_client_id,
