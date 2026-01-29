@@ -60,22 +60,26 @@ if profile["role"] == "agency" and profile["agency_id"] is None:
         submit = st.form_submit_button("Create agency")
 
     if submit:
-        res = supabase_service.table("agencies").insert({
-            "name": agency_name,
-            "owner_id": user.id
-        }, returning="representation").execute()
+        try:
+            res = supabase_service.table("agencies").insert({
+                "name": agency_name,
+                "owner_id": user.id
+            }, returning="representation").execute()
 
-        supabase_service.table("profiles").update({
-            "agency_id": res.data[0]["id"]
-        }).eq("id", user.id).execute()
+            supabase_service.table("profiles").update({
+                "agency_id": res.data[0]["id"]
+            }).eq("id", user.id).execute()
 
-        st.session_state["profile"] = None
-        st.experimental_rerun()
+            st.session_state["profile"] = None
+            st.experimental_rerun()
+
+        except Exception as e:
+            st.error(f"Failed to create agency: {e}")
 
     st.stop()
 
 # =====================================================
-# HARD RLS GUARD
+# HARD GUARD
 # =====================================================
 if not profile.get("agency_id"):
     st.error("Agency not set")
@@ -104,23 +108,41 @@ with tabs[0]:
             submit = st.form_submit_button("Add")
 
         if submit:
-            supabase.table("planning").insert({
-                "agency_id": profile["agency_id"],
-                "title": title,
-                "description": description,
-                "due_date": due_date.isoformat(),
-                "status": "todo"
-            }).execute()
-            st.experimental_rerun()
+            if not title:
+                st.warning("Title is required")
+            elif not due_date:
+                st.warning("Due date is required")
+            else:
+                try:
+                    res = supabase.table("planning").insert({
+                        "agency_id": profile["agency_id"],
+                        "title": title,
+                        "description": description,
+                        "due_date": due_date.isoformat(),
+                        "status": "todo"
+                    }).execute()
+
+                    if res.data:
+                        st.success("Planning added successfully!")
+                        st.experimental_rerun()
+                    else:
+                        st.error("Failed to add planning row.")
+
+                except Exception as e:
+                    st.error(f"Error inserting planning: {e}")
 
     # ---------------- LOAD ----------------
-    planning = supabase.table("planning") \
-        .select("*") \
-        .eq("agency_id", profile["agency_id"]) \
-        .order("due_date") \
-        .execute()
+    try:
+        planning = supabase.table("planning") \
+            .select("*") \
+            .eq("agency_id", profile["agency_id"]) \
+            .order("due_date") \
+            .execute()
+    except Exception as e:
+        st.error(f"Failed to load planning: {e}")
+        planning = None
 
-    if not planning.data:
+    if not planning or not planning.data:
         st.info("No planning yet")
     else:
         for p in planning.data:
@@ -136,12 +158,15 @@ with tabs[0]:
                     "Toggle status",
                     key=f"status-{p['id']}"
                 ):
-                    supabase.table("planning").update({
-                        "status": "done" if p["status"] == "todo" else "todo"
-                    }).eq("id", p["id"]) \
-                     .eq("agency_id", profile["agency_id"]) \
-                     .execute()
-                    st.experimental_rerun()
+                    try:
+                        supabase.table("planning").update({
+                            "status": "done" if p["status"] == "todo" else "todo"
+                        }).eq("id", p["id"]) \
+                         .eq("agency_id", profile["agency_id"]) \
+                         .execute()
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"Failed to toggle status: {e}")
 
                 # -------- EDIT --------
                 with st.form(f"edit-{p['id']}"):
@@ -151,23 +176,31 @@ with tabs[0]:
                     save = st.form_submit_button("Save changes")
 
                 if save:
-                    supabase.table("planning").update({
-                        "title": new_title,
-                        "description": new_desc,
-                        "due_date": new_due.isoformat()
-                    }).eq("id", p["id"]) \
-                     .eq("agency_id", profile["agency_id"]) \
-                     .execute()
-                    st.experimental_rerun()
+                    try:
+                        supabase.table("planning").update({
+                            "title": new_title,
+                            "description": new_desc,
+                            "due_date": new_due.isoformat()
+                        }).eq("id", p["id"]) \
+                         .eq("agency_id", profile["agency_id"]) \
+                         .execute()
+                        st.success("Planning updated!")
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"Failed to update planning: {e}")
 
                 # -------- DELETE --------
                 if st.button("Delete", key=f"delete-{p['id']}"):
-                    supabase.table("planning") \
-                        .delete() \
-                        .eq("id", p["id"]) \
-                        .eq("agency_id", profile["agency_id"]) \
-                        .execute()
-                    st.experimental_rerun()
+                    try:
+                        supabase.table("planning") \
+                            .delete() \
+                            .eq("id", p["id"]) \
+                            .eq("agency_id", profile["agency_id"]) \
+                            .execute()
+                        st.success("Planning deleted!")
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"Failed to delete planning: {e}")
 
 # =====================================================
 # PLACEHOLDERS
