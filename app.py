@@ -138,8 +138,8 @@ if profile["role"] == "agency":
                     # Hash password
                     password_hash = hashlib.sha256(client_password.encode()).hexdigest()
 
-                    # Insert into clients_manager
-                    res_manager = supabase.table("clients_manager").insert({
+                    # Step 1: Insert into clients table first (needed for planning FK)
+                    res_client = supabase.table("clients").insert({
                         "agency_id": profile["agency_id"],
                         "name": client_name,
                         "email": client_email,
@@ -148,9 +148,10 @@ if profile["role"] == "agency":
                         "password_hash": password_hash
                     }, returning="representation").execute()
 
-                    # Insert into clients table
-                    client_id = res_manager.data[0]["id"]
-                    supabase.table("clients").insert({
+                    client_id = res_client.data[0]["id"]
+
+                    # Step 2: Insert into clients_manager table
+                    supabase.table("clients_manager").insert({
                         "id": client_id,
                         "agency_id": profile["agency_id"],
                         "name": client_name,
@@ -191,8 +192,8 @@ if profile["role"] == "agency":
                             updates["password_hash"] = hashlib.sha256(new_password.encode()).hexdigest()
 
                         # Update both tables
-                        supabase.table("clients_manager").update(updates).eq("id", c['id']).execute()
                         supabase.table("clients").update(updates).eq("id", c['id']).execute()
+                        supabase.table("clients_manager").update(updates).eq("id", c['id']).execute()
 
                         st.success(f"Client {new_name} updated successfully!")
                         st.experimental_rerun()
@@ -212,6 +213,12 @@ with tabs[1]:
     else:
         # ---------------- ADD PLANNING ----------------
         if profile["role"] == "agency":
+            # Safety check: client exists in clients table
+            check_client = supabase.table("clients").select("id").eq("id", selected_client_id).execute()
+            if not check_client.data:
+                st.error("Selected client does not exist in clients table. Cannot add planning.")
+                st.stop()
+
             st.subheader("Add planning")
             with st.form("add_planning"):
                 title = st.text_input("Title")
@@ -224,7 +231,7 @@ with tabs[1]:
                     st.warning("Title and due date are required")
                 else:
                     try:
-                        # Insert into planning table (client_id references clients.id)
+                        # Insert planning row
                         res = supabase.table("planning").insert({
                             "agency_id": profile["agency_id"],
                             "client_id": selected_client_id,
