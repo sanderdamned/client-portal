@@ -4,7 +4,7 @@ from auth import register, login, get_profile, complete_profile
 from supabase_client import get_supabase, get_supabase_service
 from datetime import datetime
 import pandas as pd
-import bcrypt
+import hashlib
 
 st.set_page_config(page_title="Client Portal", layout="wide")
 st.title("Client Portal")
@@ -52,7 +52,7 @@ if profile["role"] is None:
 # =====================================================
 # AGENCY CREATION
 # =====================================================
-if profile["role"] == "agency" and profile["agency_id"] is None:
+if profile["role"] == "agency" and profile.get("agency_id") is None:
     st.subheader("Create your agency")
     with st.form("create_agency"):
         agency_name = st.text_input("Agency name")
@@ -64,8 +64,11 @@ if profile["role"] == "agency" and profile["agency_id"] is None:
                 "owner_id": user.id
             }, returning="representation").execute()
 
+            agency_id = res.data[0]["id"]
+
+            # Update profile with agency_id
             supabase_service.table("profiles").update({
-                "agency_id": res.data[0]["id"]
+                "agency_id": agency_id
             }).eq("id", user.id).execute()
 
             st.session_state["profile"] = None
@@ -77,6 +80,10 @@ if profile["role"] == "agency" and profile["agency_id"] is None:
 # =====================================================
 # HARD GUARD
 # =====================================================
+if profile["role"] == "agency" and not profile.get("agency_id"):
+    st.warning("Please create your agency first before adding clients.")
+    st.stop()
+
 if not profile.get("agency_id"):
     st.error("Agency not set")
     st.stop()
@@ -128,7 +135,8 @@ if profile["role"] == "agency":
                 st.warning("Name, email, and password are required")
             else:
                 try:
-                    password_hash = bcrypt.hashpw(client_password.encode(), bcrypt.gensalt()).decode()
+                    # Use hashlib for password hashing (works without extra packages)
+                    password_hash = hashlib.sha256(client_password.encode()).hexdigest()
 
                     # Insert into clients_manager
                     res_manager = supabase.table("clients_manager").insert({
@@ -140,7 +148,7 @@ if profile["role"] == "agency":
                         "password_hash": password_hash
                     }).execute()
 
-                    # Insert into clients (production)
+                    # Insert into clients table
                     client_id = res_manager.data[0]["id"]
                     supabase.table("clients").insert({
                         "id": client_id,
@@ -180,7 +188,7 @@ if profile["role"] == "agency":
                             "address": new_address
                         }
                         if new_password:
-                            updates["password_hash"] = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+                            updates["password_hash"] = hashlib.sha256(new_password.encode()).hexdigest()
 
                         # Update both tables
                         supabase.table("clients_manager").update(updates).eq("id", c['id']).execute()
