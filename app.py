@@ -2,6 +2,8 @@
 import streamlit as st
 from auth import register, login, get_profile, complete_profile
 from supabase_client import get_supabase, get_supabase_service
+from datetime import datetime
+import pandas as pd
 
 st.set_page_config(page_title="Client Portal", layout="wide")
 st.title("Client Portal")
@@ -97,7 +99,7 @@ tabs = st.tabs(["Planning", "Messages", "Budget", "Invoices"])
 with tabs[0]:
     st.header("Planning")
 
-    # ---------------- ADD ----------------
+    # ---------------- ADD PLANNING ----------------
     if profile["role"] == "agency":
         st.subheader("Add planning")
 
@@ -131,7 +133,7 @@ with tabs[0]:
                 except Exception as e:
                     st.error(f"Error inserting planning: {e}")
 
-    # ---------------- LOAD ----------------
+    # ---------------- LOAD PLANNING ----------------
     try:
         planning = supabase.table("planning") \
             .select("*") \
@@ -145,62 +147,91 @@ with tabs[0]:
     if not planning or not planning.data:
         st.info("No planning yet")
     else:
-        for p in planning.data:
-            st.divider()
-            st.subheader(p["title"])
-            st.write(p["description"])
-            st.caption(f"Due: {p['due_date']} | Status: {p['status']}")
+        # Convert to DataFrame for easier grouping/progress
+        planning_df = pd.DataFrame(planning.data)
+        planning_df['due_date'] = pd.to_datetime(planning_df['due_date'])
+        total_tasks = len(planning_df)
+        done_tasks = len(planning_df[planning_df['status'] == "done"])
 
-            if profile["role"] == "agency":
+        # Show progress bar
+        if total_tasks > 0:
+            st.subheader("Progress")
+            st.progress(done_tasks / total_tasks)
+            st.caption(f"{done_tasks} of {total_tasks} tasks completed")
 
-                # -------- STATUS --------
-                if st.button(
-                    "Toggle status",
-                    key=f"status-{p['id']}"
-                ):
-                    try:
-                        supabase.table("planning").update({
-                            "status": "done" if p["status"] == "todo" else "todo"
-                        }).eq("id", p["id"]) \
-                         .eq("agency_id", profile["agency_id"]) \
-                         .execute()
-                        st.experimental_rerun()
-                    except Exception as e:
-                        st.error(f"Failed to toggle status: {e}")
+        # Group tasks by status
+        upcoming = planning_df[planning_df['status'] == "todo"].sort_values('due_date')
+        completed = planning_df[planning_df['status'] == "done"].sort_values('due_date')
 
-                # -------- EDIT --------
-                with st.form(f"edit-{p['id']}"):
-                    new_title = st.text_input("Title", p["title"])
-                    new_desc = st.text_area("Description", p["description"])
-                    new_due = st.date_input("Due date", p["due_date"])
-                    save = st.form_submit_button("Save changes")
+        def display_task_card(p):
+            bg_color = "#d4edda" if p["status"] == "done" else "#fff3cd"
+            with st.container():
+                st.markdown(f"""
+                <div style="background-color:{bg_color}; padding:15px; border-radius:8px; margin-bottom:10px;">
+                    <h4>{p['title']}</h4>
+                    <small>Due: {p['due_date'].strftime('%Y-%m-%d')} | Status: {p['status']}</small>
+                </div>
+                """, unsafe_allow_html=True)
 
-                if save:
-                    try:
-                        supabase.table("planning").update({
-                            "title": new_title,
-                            "description": new_desc,
-                            "due_date": new_due.isoformat()
-                        }).eq("id", p["id"]) \
-                         .eq("agency_id", profile["agency_id"]) \
-                         .execute()
-                        st.success("Planning updated!")
-                        st.experimental_rerun()
-                    except Exception as e:
-                        st.error(f"Failed to update planning: {e}")
+                with st.expander("Details"):
+                    st.write(p["description"])
 
-                # -------- DELETE --------
-                if st.button("Delete", key=f"delete-{p['id']}"):
-                    try:
-                        supabase.table("planning") \
-                            .delete() \
-                            .eq("id", p["id"]) \
-                            .eq("agency_id", profile["agency_id"]) \
-                            .execute()
-                        st.success("Planning deleted!")
-                        st.experimental_rerun()
-                    except Exception as e:
-                        st.error(f"Failed to delete planning: {e}")
+                if profile["role"] == "agency":
+                    col1, col2, col3 = st.columns([3,1,1])
+                    with col1:
+                        pass  # empty for alignment
+                    with col2:
+                        if st.button(
+                            "✅" if p["status"]=="todo" else "↩️",
+                            key=f"toggle-{p['id']}"
+                        ):
+                            try:
+                                supabase.table("planning").update({
+                                    "status": "done" if p["status"]=="todo" else "todo"
+                                }).eq("id", p["id"]) \
+                                 .eq("agency_id", profile["agency_id"]) \
+                                 .execute()
+                                st.experimental_rerun()
+                            except Exception as e:
+                                st.error(f"Failed to toggle status: {e}")
+                    with col3:
+                        with st.form(f"edit-{p['id']}"):
+                            new_title = st.text_input("Title", p["title"])
+                            new_desc = st.text_area("Description", p["description"])
+                            new_due = st.date_input("Due date", p["due_date"])
+                            save = st.form_submit_button("Save")
+                            if save:
+                                try:
+                                    supabase.table("planning").update({
+                                        "title": new_title,
+                                        "description": new_desc,
+                                        "due_date": new_due.isoformat()
+                                    }).eq("id", p["id"]) \
+                                     .eq("agency_id", profile["agency_id"]) \
+                                     .execute()
+                                    st.success("Planning updated!")
+                                    st.experimental_rerun()
+                                except Exception as e:
+                                    st.error(f"Failed to update planning: {e}")
+
+                        if st.button("Delete", key=f"delete-{p['id']}"):
+                            try:
+                                supabase.table("planning").delete() \
+                                    .eq("id", p["id"]) \
+                                    .eq("agency_id", profile["agency_id"]) \
+                                    .execute()
+                                st.success("Planning deleted!")
+                                st.experimental_rerun()
+                            except Exception as e:
+                                st.error(f"Failed to delete planning: {e}")
+
+        st.subheader("Upcoming Tasks")
+        for _, row in upcoming.iterrows():
+            display_task_card(row)
+
+        st.subheader("Completed Tasks")
+        for _, row in completed.iterrows():
+            display_task_card(row)
 
 # =====================================================
 # PLACEHOLDERS
