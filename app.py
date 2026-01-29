@@ -7,181 +7,179 @@ st.set_page_config(page_title="Client Portal")
 st.title("Client Portal")
 
 # ------------------------------------
-# NOT LOGGED IN
+# AUTH
 # ------------------------------------
 if "user" not in st.session_state:
     action = st.radio("Choose action", ["Register", "Login"])
+    register() if action == "Register" else login()
+    st.stop()
 
-    if action == "Register":
-        register()
-    else:
-        login()
+supabase = get_supabase()
+supabase_service = get_supabase_service()
+user = st.session_state["user"]
 
 # ------------------------------------
-# LOGGED IN
+# PROFILE
 # ------------------------------------
-else:
-    supabase = get_supabase()
-    supabase_service = get_supabase_service()
-    user = st.session_state["user"]
+if "profile" not in st.session_state or st.session_state.get("profile_updated"):
+    st.session_state["profile"] = get_profile()
+    st.session_state["profile_updated"] = False
 
-    # Load or reload profile
-    if "profile" not in st.session_state or st.session_state.get("profile_updated"):
-        st.session_state["profile"] = get_profile()
-        st.session_state["profile_updated"] = False
+profile = st.session_state["profile"]
+if not profile:
+    st.error("Profile not found")
+    st.stop()
 
-    profile = st.session_state["profile"]
+# ------------------------------------
+# PROFILE SETUP
+# ------------------------------------
+if profile["role"] is None:
+    st.subheader("Complete your profile")
+    role = st.selectbox("I am a", ["agency", "client"])
+    agency_id = st.text_input("Agency ID") if role == "client" else None
 
-    if not profile:
-        st.error("Profile not found.")
+    if st.button("Save profile"):
+        complete_profile(role, agency_id)
+        st.session_state["profile_updated"] = True
+        st.experimental_rerun()
+    st.stop()
+
+# ------------------------------------
+# AGENCY CREATION
+# ------------------------------------
+if profile["role"] == "agency" and profile["agency_id"] is None:
+    st.subheader("Create your agency")
+    agency_name = st.text_input("Agency name")
+
+    if st.button("Create agency"):
+        res = supabase_service.table("agencies").insert({
+            "name": agency_name,
+            "owner_id": user.id
+        }, returning="representation").execute()
+
+        supabase_service.table("profiles").update({
+            "agency_id": res.data[0]["id"]
+        }).eq("id", user.id).execute()
+
+        st.session_state["profile_updated"] = True
+        st.experimental_rerun()
+    st.stop()
+
+# ------------------------------------
+# DASHBOARD
+# ------------------------------------
+st.success(f"Welcome {profile['role']}!")
+tabs = st.tabs(["Projects", "Messages", "Budget", "Invoices"])
+
+# ==============================
+# TAB 1: PROJECTS & TASKS
+# ==============================
+with tabs[0]:
+    st.header("Projects")
+
+    # -------- Projects --------
+    if profile["role"] == "agency":
+        with st.form("add_project"):
+            st.subheader("Create project")
+            name = st.text_input("Project name")
+            description = st.text_area("Description")
+            create_project = st.form_submit_button("Create project")
+
+        if create_project:
+            supabase.table("projects").insert({
+                "agency_id": profile["agency_id"],
+                "name": name,
+                "description": description
+            }).execute()
+            st.experimental_rerun()
+
+    projects = (
+        supabase
+        .table("projects")
+        .select("*")
+        .eq("agency_id", profile["agency_id"])
+        .execute()
+    ).data
+
+    if not projects:
+        st.info("No projects yet")
         st.stop()
 
-    # --------------------------------
-    # PROFILE COMPLETION
-    # --------------------------------
-    if profile["role"] is None:
-        st.subheader("Complete your profile")
+    project_map = {p["name"]: p for p in projects}
+    project_name = st.selectbox("Select project", project_map.keys())
+    project = project_map[project_name]
 
-        role = st.selectbox("I am a", ["agency", "client"])
-        agency_id = None
+    st.divider()
 
-        if role == "client":
-            agency_id = st.text_input("Agency ID")
+    # -------- Tasks --------
+    st.subheader("Tasks")
 
-        if st.button("Save profile"):
-            complete_profile(role, agency_id)
-            st.session_state["profile_updated"] = True
+    if profile["role"] == "agency":
+        with st.form("add_task"):
+            title = st.text_input("Task title")
+            description = st.text_area("Task description")
+            due_date = st.date_input("Due date")
+            submit_task = st.form_submit_button("Add task")
+
+        if submit_task:
+            supabase.table("planning").insert({
+                "agency_id": profile["agency_id"],
+                "project_id": project["id"],
+                "title": title,
+                "description": description,
+                "due_date": due_date.isoformat(),
+                "status": "todo"
+            }).execute()
             st.experimental_rerun()
 
-    # --------------------------------
-    # AGENCY CREATION
-    # --------------------------------
-    elif profile["role"] == "agency" and profile["agency_id"] is None:
-        st.subheader("Create your agency")
+    tasks = (
+        supabase
+        .table("planning")
+        .select("*")
+        .eq("project_id", project["id"])
+        .order("due_date")
+        .execute()
+    ).data
 
-        agency_name = st.text_input("Agency name")
+    for task in tasks:
+        col1, col2, col3 = st.columns([4, 2, 2])
 
-        if st.button("Create agency"):
-            res = supabase_service.table("agencies").insert({
-                "name": agency_name,
-                "owner_id": user.id
-            }, returning="representation").execute()
+        with col1:
+            st.markdown(f"**{task['title']}**")
+            st.caption(task["description"])
 
-            agency_id = res.data[0]["id"]
+        with col2:
+            new_status = st.selectbox(
+                "Status",
+                ["todo", "done"],
+                index=0 if task["status"] == "todo" else 1,
+                key=f"status_{task['id']}"
+            )
+            if new_status != task["status"]:
+                supabase.table("planning").update({
+                    "status": new_status
+                }).eq("id", task["id"]).execute()
+                st.experimental_rerun()
 
-            supabase_service.table("profiles").update({
-                "agency_id": agency_id
-            }).eq("id", user.id).execute()
-
-            st.success(f"Agency '{agency_name}' created!")
-            st.session_state["profile_updated"] = True
-            st.experimental_rerun()
-
-    # --------------------------------
-    # DASHBOARD
-    # --------------------------------
-    else:
-        st.success(f"Welcome {profile['role']}!")
-
-        tabs = st.tabs(["Planning", "Messages", "Budget", "Invoices"])
-
-        # ----------------------------
-        # TAB 1: Planning
-        # ----------------------------
-        with tabs[0]:
-            st.header("Planning")
-            st.write("Agency can add planning items. Clients can view.")
-
-            # Agency: add planning
+        with col3:
             if profile["role"] == "agency":
-                st.subheader("Add planning item")
-
-                with st.form("add_planning"):
-                    title = st.text_input("Title")
-                    description = st.text_area("Description")
-                    due_date = st.date_input("Due date")
-
-                    clients = (
-                        supabase
-                        .table("profiles")
-                        .select("id,email")
-                        .eq("agency_id", profile["agency_id"])
-                        .eq("role", "client")
-                        .execute()
-                    )
-
-                    client_options = {c["email"]: c["id"] for c in clients.data} if clients.data else {}
-                    client_choice = st.selectbox(
-                        "Assign to client (optional)",
-                        ["None"] + list(client_options.keys())
-                    )
-
-                    submitted = st.form_submit_button("Add planning")
-
-                if submitted:
-                    client_id = client_options.get(client_choice) if client_choice != "None" else None
-
-                    supabase.table("planning").insert({
-                        "agency_id": profile["agency_id"],
-                        "client_id": client_id,
-                        "title": title,
-                        "description": description,
-                        "due_date": due_date.isoformat(),
-                        "project_name": "General"  # future-proof
-                    }).execute()
-
-                    st.success("Planning item added")
+                if st.button("🗑 Delete", key=f"del_{task['id']}"):
+                    supabase.table("planning").delete().eq("id", task["id"]).execute()
                     st.experimental_rerun()
 
-            # Display planning (agency + client)
-            st.subheader("All planning")
+        st.divider()
 
-            if profile["role"] == "agency":
-                planning = (
-                    supabase
-                    .table("planning")
-                    .select("*")
-                    .eq("agency_id", profile["agency_id"])
-                    .order("due_date")
-                    .execute()
-                )
-            else:
-                planning = (
-                    supabase
-                    .table("planning")
-                    .select("*")
-                    .eq("agency_id", profile["agency_id"])
-                    .or_(f"client_id.eq.{profile['id']},client_id.is.null")
-                    .order("due_date")
-                    .execute()
-                )
+# ==============================
+# OTHER TABS (PLACEHOLDERS)
+# ==============================
+with tabs[1]:
+    st.header("Messages")
+    st.info("Coming next")
 
-            if planning.data:
-                for p in planning.data:
-                    st.markdown(f"### {p['title']}")
-                    st.write(p["description"])
-                    st.caption(f"Due: {p['due_date']}")
-                    st.divider()
-            else:
-                st.info("No planning items yet.")
+with tabs[2]:
+    st.header("Budget")
+    st.info("Coming next")
 
-        # ----------------------------
-        # TAB 2: Messages
-        # ----------------------------
-        with tabs[1]:
-            st.header("Messages")
-            st.info("Coming next")
-
-        # ----------------------------
-        # TAB 3: Budget
-        # ----------------------------
-        with tabs[2]:
-            st.header("Budget")
-            st.info("Coming next")
-
-        # ----------------------------
-        # TAB 4: Invoices
-        # ----------------------------
-        with tabs[3]:
-            st.header("Invoices")
-            st.info("Coming next")
+with tabs[3]:
+    st.header("Invoices")
+    st.info("Coming next")
