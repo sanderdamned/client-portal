@@ -26,7 +26,7 @@ else:
     user = st.session_state["user"]
 
     # Load or reload profile
-    if "profile" not in st.session_state or st.session_state.get("profile_updated", False):
+    if "profile" not in st.session_state or st.session_state.get("profile_updated"):
         st.session_state["profile"] = get_profile()
         st.session_state["profile_updated"] = False
 
@@ -44,12 +44,14 @@ else:
 
         role = st.selectbox("I am a", ["agency", "client"])
         agency_id = None
+
         if role == "client":
             agency_id = st.text_input("Agency ID")
 
         if st.button("Save profile"):
             complete_profile(role, agency_id)
             st.session_state["profile_updated"] = True
+            st.experimental_rerun()
 
     # --------------------------------
     # AGENCY CREATION
@@ -60,34 +62,27 @@ else:
         agency_name = st.text_input("Agency name")
 
         if st.button("Create agency"):
-            try:
-                # Use service client to bypass RLS
-                res = supabase_service.table("agencies").insert({
-                    "name": agency_name,
-                    "owner_id": user.id
-                }, returning="representation").execute()
+            res = supabase_service.table("agencies").insert({
+                "name": agency_name,
+                "owner_id": user.id
+            }, returning="representation").execute()
 
-                agency_id = res.data[0]["id"]
+            agency_id = res.data[0]["id"]
 
-                supabase_service.table("profiles").update({
-                    "agency_id": agency_id
-                }).eq("id", user.id).execute()
+            supabase_service.table("profiles").update({
+                "agency_id": agency_id
+            }).eq("id", user.id).execute()
 
-                st.success(f"Agency '{agency_name}' created!")
-                st.session_state["profile_updated"] = True
-
-            except Exception as e:
-                st.error(f"Error creating agency: {e}")
-                import traceback
-                st.text(traceback.format_exc())
+            st.success(f"Agency '{agency_name}' created!")
+            st.session_state["profile_updated"] = True
+            st.experimental_rerun()
 
     # --------------------------------
-    # DASHBOARDS
+    # DASHBOARD
     # --------------------------------
     else:
         st.success(f"Welcome {profile['role']}!")
 
-        # Tabs for different functionality
         tabs = st.tabs(["Planning", "Messages", "Budget", "Invoices"])
 
         # ----------------------------
@@ -95,85 +90,98 @@ else:
         # ----------------------------
         with tabs[0]:
             st.header("Planning")
-            st.write("Agency can add/update planning. Client can view.")
+            st.write("Agency can add planning items. Clients can view.")
 
-            # --------------------
-            # Agency: Create / Update Planning
-            # --------------------
+            # Agency: add planning
             if profile["role"] == "agency":
-                st.subheader("Create / Update Planning")
-                title = st.text_input("Title")
-                description = st.text_area("Description")
-                due_date = st.date_input("Due Date")
+                st.subheader("Add planning item")
 
-                # Optional: assign to client
-                clients = supabase.table("profiles").select("*").eq("agency_id", profile["agency_id"]).eq("role", "client").execute()
-                client_options = {c["email"]: c["id"] for c in clients.data} if clients.data else {}
-                client_choice = st.selectbox("Assign to client (optional)", ["None"] + list(client_options.keys()))
-                client_id = client_options.get(client_choice) if client_choice != "None" else None
+                with st.form("add_planning"):
+                    title = st.text_input("Title")
+                    description = st.text_area("Description")
+                    due_date = st.date_input("Due date")
 
-                if st.button("Submit Planning"):
-                    try:
-                        res = supabase_service.table("planning").insert({
-                            "agency_id": profile["agency_id"],
-                            "client_id": client_id,
-                            "title": title,
-                            "description": description,
-                            "due_date": due_date.isoformat() if due_date else None
-                        }, returning="representation").execute()
+                    clients = (
+                        supabase
+                        .table("profiles")
+                        .select("id,email")
+                        .eq("agency_id", profile["agency_id"])
+                        .eq("role", "client")
+                        .execute()
+                    )
 
-                        if res.data:
-                            st.success("Planning added!")
-                        else:
-                            st.error("Planning insertion failed.")
+                    client_options = {c["email"]: c["id"] for c in clients.data} if clients.data else {}
+                    client_choice = st.selectbox(
+                        "Assign to client (optional)",
+                        ["None"] + list(client_options.keys())
+                    )
 
-                    except Exception as e:
-                        st.error(f"Error adding planning: {e}")
+                    submitted = st.form_submit_button("Add planning")
 
-            # --------------------
-            # Display planning for both roles
-            # --------------------
-            st.subheader("All Planning")
-            try:
-                if profile["role"] == "agency":
-                    planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).execute()
-                else:
-                    planning = supabase.table("planning").select("*").eq("agency_id", profile["agency_id"]).or_(
-                        f"client_id.eq.{profile['id']},client_id.is.null"
-                    ).execute()
+                if submitted:
+                    client_id = client_options.get(client_choice) if client_choice != "None" else None
 
-                if planning.data:
-                    for p in planning.data:
-                        st.write(f"**{p['title']}**")
-                        st.write(f"{p['description']}")
-                        st.write(f"Due: {p['due_date']}")
-                        st.write("---")
-                else:
-                    st.info("No planning found yet.")
+                    supabase.table("planning").insert({
+                        "agency_id": profile["agency_id"],
+                        "client_id": client_id,
+                        "title": title,
+                        "description": description,
+                        "due_date": due_date.isoformat(),
+                        "project_name": "General"  # future-proof
+                    }).execute()
 
-            except Exception as e:
-                st.error(f"Error loading planning: {e}")
+                    st.success("Planning item added")
+                    st.experimental_rerun()
+
+            # Display planning (agency + client)
+            st.subheader("All planning")
+
+            if profile["role"] == "agency":
+                planning = (
+                    supabase
+                    .table("planning")
+                    .select("*")
+                    .eq("agency_id", profile["agency_id"])
+                    .order("due_date")
+                    .execute()
+                )
+            else:
+                planning = (
+                    supabase
+                    .table("planning")
+                    .select("*")
+                    .eq("agency_id", profile["agency_id"])
+                    .or_(f"client_id.eq.{profile['id']},client_id.is.null")
+                    .order("due_date")
+                    .execute()
+                )
+
+            if planning.data:
+                for p in planning.data:
+                    st.markdown(f"### {p['title']}")
+                    st.write(p["description"])
+                    st.caption(f"Due: {p['due_date']}")
+                    st.divider()
+            else:
+                st.info("No planning items yet.")
 
         # ----------------------------
         # TAB 2: Messages
         # ----------------------------
         with tabs[1]:
             st.header("Messages")
-            st.write("Agency and client can send messages and view them.")
-            # TODO: implement messaging later
+            st.info("Coming next")
 
         # ----------------------------
         # TAB 3: Budget
         # ----------------------------
         with tabs[2]:
             st.header("Budget")
-            st.write("Agency can submit/update budget. Client can view timeline & deltas.")
-            # TODO: implement budget later
+            st.info("Coming next")
 
         # ----------------------------
         # TAB 4: Invoices
         # ----------------------------
         with tabs[3]:
             st.header("Invoices")
-            st.write("Agency can add invoices. Client can mark as refused, scheduled, or paid.")
-            # TODO: implement invoices later
+            st.info("Coming next")
